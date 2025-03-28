@@ -3,52 +3,63 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
+	"time"
 
-	"github.com/rabbitmq/amqp091-go" // Importar el paquete amqp091-go correctamente
+	"github.com/rabbitmq/amqp091-go"
 )
 
 func main() {
-	// Conectar a RabbitMQ
-	conn, err := amqp091.Dial("amqp://guest:guest@localhost:5672/") // Usar amqp091 para referirse al paquete
+	rabbitmqHost := os.Getenv("RABBITMQ_HOST")
+	if rabbitmqHost == "" {
+		rabbitmqHost = "localhost"
+	}
+
+	conn, err := amqp091.Dial("amqp://guest:guest@" + rabbitmqHost + ":5672/")
 	if err != nil {
-		log.Fatalf("Error de conexión: %s", err)
+		log.Fatalf("Error al conectar a RabbitMQ: %s", err)
 	}
 	defer conn.Close()
 
-	// Crear un canal
 	ch, err := conn.Channel()
 	if err != nil {
-		log.Fatalf("Error de canal: %s", err)
+		log.Fatalf("Error al abrir un canal: %s", err)
 	}
 	defer ch.Close()
 
-	// Declarar la cola
+	queueName := os.Getenv("QUEUE_NAME")
+	if queueName == "" {
+		queueName = "go_queue"
+	}
+
 	q, err := ch.QueueDeclare(
-		"hello", // Nombre de la cola
-		false,   // Durable
-		false,   // AutoDelete
-		false,   // Exclusive
-		false,   // NoWait
-		nil,     // Argumentos
+		queueName,
+		false,
+		false,
+		false,
+		false,
+		nil,
 	)
 	if err != nil {
 		log.Fatalf("Error al declarar la cola: %s", err)
 	}
 
-	// Enviar un mensaje
-	body := "Hello from Go Producer!"
-	err = ch.Publish(
-		"",     // Exchange
-		q.Name, // RoutingKey
-		false,  // Mandatory
-		false,  // Immediate
-		amqp091.Publishing{ // Usar amqp091.Publishing correctamente
-			ContentType: "text/plain",
-			Body:        []byte(body),
-		})
-	if err != nil {
-		log.Fatalf("Error al publicar el mensaje: %s", err)
+	for i := 1; i <= 5; i++ {
+		body := fmt.Sprintf("Mensaje %d desde Go Producer!", i)
+		err = ch.Publish(
+			"",
+			q.Name,
+			false,
+			false,
+			amqp091.Publishing{
+				ContentType: "text/plain",
+				Body:        []byte(body),
+			},
+		)
+		if err != nil {
+			log.Fatalf("Error al publicar el mensaje: %s", err)
+		}
+		log.Printf("[x] Enviado: %s", body)
+		time.Sleep(2 * time.Second)
 	}
-	fmt.Printf("[x] Enviado: %s\n", body)
 }
-
